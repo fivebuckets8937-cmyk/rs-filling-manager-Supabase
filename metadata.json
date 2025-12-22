@@ -1,0 +1,5 @@
+{
+  "name": "RS Filling Manager",
+  "description": "A task management system for RS filling teams, featuring 5-day workflow tracking, batch management, and AI-powered workload analysis.",
+  "requestFramePermissions": []
+}
