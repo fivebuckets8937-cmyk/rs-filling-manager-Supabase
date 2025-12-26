@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { UserCircle, Lock, AlertCircle } from 'lucide-react';
-import { login, initializeDefaultUsers, getAllUsers } from '../services/authService';
-import { TEAM_MEMBERS } from '../constants';
+import React, { useState } from 'react';
+import { UserCircle, Lock, AlertCircle, Mail } from 'lucide-react';
+import { login } from '../services/authService';
 import { TRANSLATIONS } from '../constants';
 
 interface LoginProps {
@@ -10,17 +9,12 @@ interface LoginProps {
 }
 
 const Login: React.FC<LoginProps> = ({ onLoginSuccess, lang }) => {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const t = TRANSLATIONS[lang];
-
-  useEffect(() => {
-    // 初始化默认用户
-    initializeDefaultUsers(TEAM_MEMBERS);
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,21 +22,22 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, lang }) => {
     setLoading(true);
 
     try {
-      const user = login(username, password);
+      const user = await login(email, password);
       if (user) {
         onLoginSuccess(user);
       } else {
-        setError(lang === 'zh' ? '用户名或密码错误' : 'Invalid username or password');
+        setError(lang === 'zh' ? '邮箱或密码错误' : 'Invalid email or password');
       }
-    } catch (err) {
-      setError(lang === 'zh' ? '登录失败，请重试' : 'Login failed, please try again');
+    } catch (err: any) {
+      console.error('Login error:', err);
+      setError(
+        err?.message || 
+        (lang === 'zh' ? '登录失败，请重试' : 'Login failed, please try again')
+      );
     } finally {
       setLoading(false);
     }
   };
-
-  const users = getAllUsers();
-  const defaultUsers = users.slice(0, 3); // 显示前3个用户作为快速登录选项
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
@@ -65,16 +60,16 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, lang }) => {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
-                {lang === 'zh' ? '用户名' : 'Username'}
+                {lang === 'zh' ? '邮箱' : 'Email'}
               </label>
               <div className="relative">
-                <UserCircle className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={18} />
+                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={18} />
                 <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                  placeholder={lang === 'zh' ? '输入用户名' : 'Enter username'}
+                  placeholder={lang === 'zh' ? '输入邮箱地址' : 'Enter email address'}
                   required
                   autoFocus
                 />
@@ -117,40 +112,12 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, lang }) => {
             </button>
           </form>
 
-          {/* Quick Login Hints */}
-          {defaultUsers.length > 0 && (
-            <div className="mt-6 pt-6 border-t border-slate-200">
-              <p className="text-xs text-slate-500 mb-3 text-center">
-                {lang === 'zh' ? '快速登录提示（默认密码：123456）' : 'Quick Login (Default password: 123456)'}
-              </p>
-              <div className="space-y-2">
-                {defaultUsers.map((user) => {
-                  const member = TEAM_MEMBERS.find(m => m.id === user.memberId);
-                  return (
-                    <button
-                      key={user.id}
-                      type="button"
-                      onClick={() => {
-                        setUsername(user.username);
-                        setPassword('123456');
-                      }}
-                      className="w-full text-left px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
-                    >
-                      <span className="font-medium">{member?.name}</span>
-                      <span className="text-slate-400 ml-2">({user.username})</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
           {/* Info */}
           <div className="mt-6 text-center">
             <p className="text-xs text-slate-400">
               {lang === 'zh' 
-                ? '首次使用：系统已自动创建默认账户' 
-                : 'First time: Default accounts have been created automatically'
+                ? '请使用您的邮箱和密码登录。如未注册，请联系管理员。' 
+                : 'Please login with your email and password. Contact administrator if you need an account.'
               }
             </p>
           </div>

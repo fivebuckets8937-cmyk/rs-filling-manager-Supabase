@@ -4,6 +4,21 @@ import { WORKFLOW_TEMPLATE, FULL_WORKFLOW_STEPS } from '../constants';
 import { suggestAssignment } from '../services/ollamaService';
 import { X, Sparkles, CheckCircle2, Circle, Info } from 'lucide-react';
 
+/**
+ * 生成UUID格式的任务ID
+ */
+const generateTaskId = (): string => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback for older browsers
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
+
 interface TaskModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -35,7 +50,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
         deadline.setDate(deadline.getDate() + 5);
         
         setFormData({
-          id: Math.random().toString(36).substr(2, 9),
+          id: generateTaskId(),
           status: TaskStatus.PENDING,
           progress: JSON.parse(JSON.stringify(WORKFLOW_TEMPLATE)),
           priority: 'NORMAL',

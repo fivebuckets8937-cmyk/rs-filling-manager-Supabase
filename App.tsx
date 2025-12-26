@@ -1,14 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Task, TeamMember, TaskStatus } from './types';
-import { TEAM_MEMBERS, MOCK_TASKS_INITIAL, TRANSLATIONS } from './constants';
+import { TRANSLATIONS } from './constants';
+import { fetchTeamMembers, subscribeToTeamMembers, unsubscribeFromTeamMembers } from './services/teamMemberService';
 import TaskModal from './components/TaskModal';
 import WorkloadChart from './components/WorkloadChart';
 import CalendarView from './components/CalendarView';
 import Login from './components/Login';
 //import { generateMorningBriefing } from './services/geminiService';
 import { generateMorningBriefing } from './services/ollamaService.ts';
-import { saveTasks, loadTasks } from './services/storageService';
-import { getCurrentUser, logout as authLogout, isAuthenticated } from './services/authService';
+import { fetchTasks, saveTask } from './services/storageService';
+import { getCurrentUser, logout as authLogout, isAuthenticated, convertToTeamMember, onAuthStateChange } from './services/authService';
+import { subscribeToTasks, unsubscribeFromTasks } from './services/realtimeService';
+import { createErrorMessage } from './services/errorHandler';
 import { 
   LayoutDashboard, 
   ListTodo, 
@@ -31,10 +34,13 @@ const App: React.FC = () => {
   
   // --- App State ---
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | undefined>(undefined);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'tasks'>('dashboard');
   const [lang, setLang] = useState<'en' | 'zh'>('zh');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
   // AI State
   const [briefing, setBriefing] = useState<string | null>(null);
@@ -42,75 +48,305 @@ const App: React.FC = () => {
 
   const t = TRANSLATIONS[lang];
 
-  // --- Check authentication on mount ---
-  useEffect(() => {
-    const checkAuth = () => {
-      if (isAuthenticated()) {
-        const user = getCurrentUser();
-        if (user) {
-          const member = TEAM_MEMBERS.find(m => m.id === user.memberId);
-          if (member) {
-            setLoggedInUser(user);
-            setCurrentUser(member);
-            setIsLoggedIn(true);
-            // Load user's tasks
-            const userTasks = loadTasks();
-            if (userTasks.length === 0) {
-              setTasks(MOCK_TASKS_INITIAL as Task[]);
-            } else {
-              setTasks(userTasks);
-            }
-          }
-        }
-      }
-    };
-    checkAuth();
+  // --- Refs for subscription management ---
+  const tasksUnsubscribeRef = useRef<(() => void) | null>(null);
+  const membersUnsubscribeRef = useRef<(() => void) | null>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const setupSubscriptions = useCallback(() => {
+    // Clean up existing subscriptions first
+    if (tasksUnsubscribeRef.current) {
+      tasksUnsubscribeRef.current();
+      tasksUnsubscribeRef.current = null;
+    }
+    if (membersUnsubscribeRef.current) {
+      membersUnsubscribeRef.current();
+      membersUnsubscribeRef.current = null;
+    }
+    unsubscribeFromTasks();
+    unsubscribeFromTeamMembers();
+
+    // Setup new subscriptions
+    tasksUnsubscribeRef.current = subscribeToTasks((updatedTasks) => {
+      setTasks(updatedTasks);
+    });
+    
+    membersUnsubscribeRef.current = subscribeToTeamMembers((updatedMembers) => {
+      setTeamMembers(updatedMembers);
+    });
   }, []);
 
-  // --- Save tasks when they change ---
+  // --- Check authentication on mount and setup realtime ---
   useEffect(() => {
-    if (isLoggedIn && tasks.length > 0) {
-      saveTasks(tasks);
-    }
-  }, [tasks, isLoggedIn]);
+    let authSubscription: { data: { subscription: { unsubscribe: () => void } } } | null = null;
+
+    const initializeApp = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        console.log('[App] 开始初始化应用...');
+        
+        // 添加超时保护（10秒）
+        const timeoutPromise = new Promise((_, reject) => {
+          timeoutRef.current = setTimeout(() => {
+            reject(new Error('初始化超时：请检查网络连接和 Supabase 配置'));
+          }, 10000);
+        });
+
+        // isAuthenticated() 内部已有超时保护（5秒），这里直接调用
+        console.log('[App] 检查认证状态...');
+        const authenticated = await isAuthenticated();
+        console.log('[App] 认证状态:', authenticated);
+        
+        if (authenticated) {
+          console.log('[App] 用户已认证，获取用户信息...');
+          // getCurrentUser() 内部已有超时保护（5秒），这里直接调用
+          const user = await getCurrentUser();
+          
+          if (!user) {
+            console.error('[App] 无法获取当前用户');
+            setError(createErrorMessage(new Error('Failed to get current user'), lang, 'initialization'));
+            setIsLoggedIn(false);
+            setLoading(false);
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
+            return;
+          }
+
+          if (!user.teamMember) {
+            console.error('[App] 用户没有关联的团队成员记录');
+            setError(createErrorMessage(
+              new Error('User team member not found. Please contact administrator.'),
+              lang,
+              'initialization'
+            ));
+            setIsLoggedIn(false);
+            setLoading(false);
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
+            return;
+          }
+
+          console.log('[App] 设置用户状态...');
+          setLoggedInUser(user);
+          const member = convertToTeamMember(user.teamMember);
+          setCurrentUser(member);
+          setIsLoggedIn(true);
+          
+          // Load team members and tasks from database
+          // 添加总体超时保护（15秒）
+          try {
+            console.log('[App] 加载团队成员和任务数据...');
+            const dataTimeoutPromise = new Promise<never>((_, reject) => {
+              const timeoutId = setTimeout(() => {
+                reject(new Error('数据加载超时：请检查网络连接'));
+              }, 15000);
+              // 存储 timeoutId 以便清理
+              if (timeoutRef.current) clearTimeout(timeoutRef.current);
+              timeoutRef.current = timeoutId;
+            });
+
+            const [members, userTasks] = await Promise.race([
+              Promise.all([
+                fetchTeamMembers(),
+                fetchTasks()
+              ]),
+              dataTimeoutPromise
+            ]) as [TeamMember[], Task[]];
+            
+            console.log('[App] 数据加载成功:', { membersCount: members.length, tasksCount: userTasks.length });
+            setTeamMembers(members);
+            setTasks(userTasks);
+            
+            // Setup realtime subscriptions
+            console.log('[App] 设置实时订阅...');
+            setupSubscriptions();
+            setLoading(false);
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
+          } catch (dataError: any) {
+            console.error('[App] 数据加载失败:', dataError);
+            setError(createErrorMessage(dataError, lang, 'dataLoading'));
+            // Still allow user to see the app, but with limited functionality
+            setTeamMembers([]);
+            setTasks([]);
+            setLoading(false);
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
+          }
+        } else {
+          console.log('[App] 用户未认证，显示登录页面');
+          setIsLoggedIn(false);
+          setLoading(false);
+          if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        }
+      } catch (err: any) {
+        console.error('[App] 初始化异常:', err);
+        setError(createErrorMessage(err, lang, 'initialization'));
+        setIsLoggedIn(false);
+        setLoading(false);
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      }
+    };
+
+    initializeApp();
+
+    // Listen for auth state changes
+    authSubscription = onAuthStateChange(async (user) => {
+      try {
+        if (user) {
+          // 用户存在（即使 teamMember 可能为 null，等待异步更新）
+          setLoggedInUser(user);
+          
+          if (user.teamMember) {
+            // 有完整的 teamMember 信息
+            const member = convertToTeamMember(user.teamMember);
+            setCurrentUser(member);
+            setIsLoggedIn(true);
+            
+            try {
+              const [members, userTasks] = await Promise.all([
+                fetchTeamMembers(),
+                fetchTasks()
+              ]);
+              setTeamMembers(members);
+              setTasks(userTasks);
+              
+              // Setup realtime subscriptions (will clean up old ones first)
+              setupSubscriptions();
+            } catch (dataError) {
+              setError(createErrorMessage(dataError, lang, 'dataLoading'));
+              setTeamMembers([]);
+              setTasks([]);
+            }
+          } else {
+            // teamMember 为 null（可能是超时导致的 fallback user），保持当前状态，等待异步更新
+            // 不改变 isLoggedIn 和 currentUser，避免误登出
+            console.log('[App] 收到用户但 teamMember 为空，等待异步更新...');
+          }
+        } else {
+          // 用户为 null，真正登出
+          setIsLoggedIn(false);
+          setCurrentUser(null);
+          setTasks([]);
+          setTeamMembers([]);
+          // Clean up subscriptions
+          if (tasksUnsubscribeRef.current) {
+            tasksUnsubscribeRef.current();
+            tasksUnsubscribeRef.current = null;
+          }
+          if (membersUnsubscribeRef.current) {
+            membersUnsubscribeRef.current();
+            membersUnsubscribeRef.current = null;
+          }
+          unsubscribeFromTasks();
+          unsubscribeFromTeamMembers();
+        }
+      } catch (err) {
+        setError(createErrorMessage(err, lang, 'authStateChange'));
+      }
+    });
+
+    return () => {
+      console.log('[App] 清理订阅和超时...');
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      if (authSubscription) {
+        authSubscription.data.subscription.unsubscribe();
+      }
+      if (tasksUnsubscribeRef.current) {
+        tasksUnsubscribeRef.current();
+        tasksUnsubscribeRef.current = null;
+      }
+      if (membersUnsubscribeRef.current) {
+        membersUnsubscribeRef.current();
+        membersUnsubscribeRef.current = null;
+      }
+      unsubscribeFromTasks();
+      unsubscribeFromTeamMembers();
+    };
+  }, [setupSubscriptions, lang]);
 
   // --- Login Handler ---
-  const handleLoginSuccess = (user: any) => {
-    const member = TEAM_MEMBERS.find(m => m.id === user.memberId);
-    if (member) {
-      setLoggedInUser(user);
-      setCurrentUser(member);
-      setIsLoggedIn(true);
-      // Load user's tasks
-      const userTasks = loadTasks();
-      if (userTasks.length === 0) {
-        setTasks(MOCK_TASKS_INITIAL as Task[]);
-      } else {
+  const handleLoginSuccess = async (user: any) => {
+    try {
+      setError(null);
+      setLoading(true);
+      
+      if (user && user.teamMember) {
+        setLoggedInUser(user);
+        const member = convertToTeamMember(user.teamMember);
+        setCurrentUser(member);
+        setIsLoggedIn(true);
+        
+        // Load team members and tasks from database
+        const [members, userTasks] = await Promise.all([
+          fetchTeamMembers(),
+          fetchTasks()
+        ]);
+        setTeamMembers(members);
         setTasks(userTasks);
+        setLoading(false);
+        
+        // Setup realtime subscriptions (using the same function as initialization)
+        setupSubscriptions();
+      } else {
+        setError(createErrorMessage(new Error('User team member not found'), lang, 'login'));
+        setIsLoggedIn(false);
+        setLoading(false);
       }
+    } catch (err) {
+      setError(createErrorMessage(err, lang, 'login'));
+      setIsLoggedIn(false);
+      setLoading(false);
     }
   };
 
   // --- Logout Handler ---
-  const handleLogout = () => {
-    authLogout();
-    setIsLoggedIn(false);
-    setLoggedInUser(null);
-    setCurrentUser(null);
-    setTasks([]);
-    setBriefing(null);
+  const handleLogout = async () => {
+    try {
+      await authLogout();
+      setIsLoggedIn(false);
+      setLoggedInUser(null);
+      setCurrentUser(null);
+      setTasks([]);
+      setTeamMembers([]);
+      setBriefing(null);
+      setError(null);
+      // Clean up subscriptions
+      if (tasksUnsubscribeRef.current) {
+        tasksUnsubscribeRef.current();
+        tasksUnsubscribeRef.current = null;
+      }
+      if (membersUnsubscribeRef.current) {
+        membersUnsubscribeRef.current();
+        membersUnsubscribeRef.current = null;
+      }
+      unsubscribeFromTasks();
+      unsubscribeFromTeamMembers();
+    } catch (err) {
+      setError(createErrorMessage(err, lang, 'logout'));
+    }
   };
 
   // --- Handlers ---
-  const handleSaveTask = (updatedTask: Task) => {
-    setTasks(prev => {
-      const exists = prev.find(t => t.id === updatedTask.id);
-      if (exists) {
-        return prev.map(t => t.id === updatedTask.id ? updatedTask : t);
-      } else {
-        return [...prev, updatedTask];
+  const handleSaveTask = async (updatedTask: Task) => {
+    try {
+      setError(null);
+      // Save to database
+      const savedTask = await saveTask(updatedTask);
+      if (savedTask) {
+        // Update local state (realtime will also update, but optimistic update is better UX)
+        setTasks(prev => {
+          const exists = prev.find(t => t.id === savedTask.id);
+          if (exists) {
+            return prev.map(t => t.id === savedTask.id ? savedTask : t);
+          } else {
+            return [...prev, savedTask];
+          }
+        });
       }
-    });
+    } catch (err) {
+      setError(createErrorMessage(err, lang, 'saveTask'));
+    }
   };
 
   const handleCreateNew = () => {
@@ -124,10 +360,17 @@ const App: React.FC = () => {
   };
 
   const generateBriefing = async () => {
-    setLoadingBriefing(true);
-    const text = await generateMorningBriefing(tasks, TEAM_MEMBERS, lang);
-    setBriefing(text);
-    setLoadingBriefing(false);
+    try {
+      setLoadingBriefing(true);
+      setError(null);
+      const text = await generateMorningBriefing(tasks, teamMembers, lang);
+      setBriefing(text);
+    } catch (err) {
+      setError(createErrorMessage(err, lang, 'generateBriefing'));
+      setBriefing(lang === 'zh' ? '生成简报时发生错误' : 'Error generating briefing');
+    } finally {
+      setLoadingBriefing(false);
+    }
   };
 
   const handleExportCSV = () => {
@@ -138,7 +381,7 @@ const App: React.FC = () => {
     ];
 
     const rows = tasks.map(t => {
-      const assigneeName = TEAM_MEMBERS.find(m => m.id === t.assigneeId)?.name || 'Unassigned';
+      const assigneeName = teamMembers.find(m => m.id === t.assigneeId)?.name || 'Unassigned';
       const completedSteps = t.progress.filter(p => p.isCompleted).length;
       return [
         t.id,
@@ -168,6 +411,17 @@ const App: React.FC = () => {
   };
 
   // --- Show Login if not authenticated ---
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-slate-600">{lang === 'zh' ? '加载中...' : 'Loading...'}</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!isLoggedIn || !currentUser) {
     return <Login onLoginSuccess={handleLoginSuccess} lang={lang} />;
   }
@@ -261,6 +515,22 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       <main className="flex-1 p-4 md:p-8 overflow-y-auto">
+        {/* Error Message */}
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
+            <div className="flex items-center gap-2 text-red-800">
+              <AlertCircle size={20} />
+              <span>{error}</span>
+            </div>
+            <button
+              onClick={() => setError(null)}
+              className="text-red-600 hover:text-red-800"
+            >
+              ×
+            </button>
+          </div>
+        )}
+        
         <header className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
           <div>
             <h2 className="text-2xl font-bold text-slate-800">
@@ -297,7 +567,7 @@ const App: React.FC = () => {
                 <CalendarView tasks={tasks} translations={t} />
 
                 {/* Chart */}
-                <WorkloadChart tasks={tasks} members={TEAM_MEMBERS} translations={t} />
+                <WorkloadChart tasks={tasks} members={teamMembers} translations={t} />
               </div>
 
               {/* Right Column: AI Briefing & Quick Tasks */}
@@ -402,9 +672,9 @@ const App: React.FC = () => {
                         {task.assigneeId ? (
                            <div className="flex items-center gap-2">
                              <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold">
-                               {TEAM_MEMBERS.find(m => m.id === task.assigneeId)?.name.charAt(0)}
+                               {teamMembers.find(m => m.id === task.assigneeId)?.name.charAt(0)}
                              </div>
-                             <span className="text-slate-700">{TEAM_MEMBERS.find(m => m.id === task.assigneeId)?.name}</span>
+                             <span className="text-slate-700">{teamMembers.find(m => m.id === task.assigneeId)?.name}</span>
                            </div>
                         ) : (
                           <span className="text-orange-500 italic flex items-center gap-1">
@@ -464,7 +734,7 @@ const App: React.FC = () => {
         onClose={() => setIsModalOpen(false)}
         onSave={handleSaveTask}
         currentUser={currentUser}
-        members={TEAM_MEMBERS}
+        members={teamMembers}
         existingTask={editingTask}
         allTasks={tasks}
         translations={t}

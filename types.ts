@@ -19,6 +19,47 @@ export interface TeamMember {
   avatar: string;
 }
 
+// Database types (matching Supabase schema)
+export interface DatabaseTeamMember {
+  id: string;
+  user_id: string;
+  name: string;
+  role: 'MANAGER' | 'MEMBER';
+  avatar: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DatabaseTask {
+  id: string;
+  project_number: string;
+  project_owner: string | null;
+  source: string | null;
+  batch_info: string | null;
+  received_date: string | null;
+  start_date: string | null;
+  completion_date: string | null;
+  deadline_date: string | null;
+  assignee_id: string | null;
+  status: TaskStatus;
+  priority: 'NORMAL' | 'URGENT';
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DatabaseTaskProgress {
+  id: string;
+  task_id: string;
+  day: number;
+  label: string;
+  is_completed: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Application types (for frontend use)
 export interface Task {
   id: string;
   projectNumber: string;
@@ -31,8 +72,11 @@ export interface Task {
   deadlineDate: string;
   assigneeId: string | null;
   status: TaskStatus;
-  progress: DailyTask[]; // Array of 5 days
+  progress: DailyTask[]; // Array of 8 steps
   priority: 'NORMAL' | 'URGENT';
+  createdBy?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface DashboardStats {
