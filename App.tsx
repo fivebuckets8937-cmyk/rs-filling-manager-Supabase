@@ -7,7 +7,8 @@ import WorkloadChart from './components/WorkloadChart';
 import CalendarView from './components/CalendarView';
 import Login from './components/Login';
 //import { generateMorningBriefing } from './services/geminiService';
-import { generateMorningBriefing } from './services/ollamaService.ts';
+// 暂时隐藏 AI 简报功能
+// import { generateMorningBriefing } from './services/ollamaService.ts';
 import { fetchTasks, saveTask } from './services/storageService';
 import { getCurrentUser, logout as authLogout, isAuthenticated, convertToTeamMember, onAuthStateChange } from './services/authService';
 import { subscribeToTasks, unsubscribeFromTasks } from './services/realtimeService';
@@ -22,7 +23,7 @@ import {
   CheckCircle, 
   Clock, 
   AlertCircle,
-  Sparkles,
+  // Sparkles, // 暂时隐藏 AI 简报功能
   Download
 } from 'lucide-react';
 
@@ -42,9 +43,9 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // AI State
-  const [briefing, setBriefing] = useState<string | null>(null);
-  const [loadingBriefing, setLoadingBriefing] = useState(false);
+  // AI State - 暂时隐藏 AI 简报功能
+  // const [briefing, setBriefing] = useState<string | null>(null);
+  // const [loadingBriefing, setLoadingBriefing] = useState(false);
 
   const t = TRANSLATIONS[lang];
 
@@ -309,7 +310,7 @@ const App: React.FC = () => {
       setCurrentUser(null);
       setTasks([]);
       setTeamMembers([]);
-      setBriefing(null);
+      // setBriefing(null); // 暂时隐藏 AI 简报功能
       setError(null);
       // Clean up subscriptions
       if (tasksUnsubscribeRef.current) {
@@ -335,11 +336,11 @@ const App: React.FC = () => {
       const savedTask = await saveTask(updatedTask);
       if (savedTask) {
         // Update local state (realtime will also update, but optimistic update is better UX)
-        setTasks(prev => {
+    setTasks(prev => {
           const exists = prev.find(t => t.id === savedTask.id);
-          if (exists) {
+      if (exists) {
             return prev.map(t => t.id === savedTask.id ? savedTask : t);
-          } else {
+      } else {
             return [...prev, savedTask];
           }
         });
@@ -359,19 +360,20 @@ const App: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const generateBriefing = async () => {
-    try {
-      setLoadingBriefing(true);
-      setError(null);
-      const text = await generateMorningBriefing(tasks, teamMembers, lang);
-      setBriefing(text);
-    } catch (err) {
-      setError(createErrorMessage(err, lang, 'generateBriefing'));
-      setBriefing(lang === 'zh' ? '生成简报时发生错误' : 'Error generating briefing');
-    } finally {
-      setLoadingBriefing(false);
-    }
-  };
+  // 暂时隐藏 AI 简报功能
+  // const generateBriefing = async () => {
+  //   try {
+  //     setLoadingBriefing(true);
+  //     setError(null);
+  //     const text = await generateMorningBriefing(tasks, teamMembers, lang);
+  //     setBriefing(text);
+  //   } catch (err) {
+  //     setError(createErrorMessage(err, lang, 'generateBriefing'));
+  //     setBriefing(lang === 'zh' ? '生成简报时发生错误' : 'Error generating briefing');
+  //   } finally {
+  //     setLoadingBriefing(false);
+  //   }
+  // };
 
   const handleExportCSV = () => {
     const headers = [
@@ -497,7 +499,7 @@ const App: React.FC = () => {
               <div className="flex items-center gap-2 mb-2">
                 <UserCircle size={16} className="text-slate-400" />
                 <span className="text-sm font-medium text-white">{currentUser.name}</span>
-              </div>
+            </div>
               <p className="text-xs text-slate-400">{t.roles[currentUser.role]}</p>
               <p className="text-xs text-slate-500 mt-1">@{loggedInUser?.username}</p>
             </div>
@@ -572,8 +574,8 @@ const App: React.FC = () => {
 
               {/* Right Column: AI Briefing & Quick Tasks */}
               <div className="space-y-6">
-                {/* AI Briefing */}
-                <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
+                {/* AI Briefing - 暂时隐藏该功能 */}
+                {/* <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">{t.aiMorningBriefing}</h3>
                     <button 
@@ -595,7 +597,7 @@ const App: React.FC = () => {
                       </div>
                     )}
                   </div>
-                </div>
+                </div> */}
 
                 {/* My Active Tasks (Quick View) */}
                 <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
