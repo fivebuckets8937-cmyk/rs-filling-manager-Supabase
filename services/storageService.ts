@@ -191,22 +191,62 @@ export const saveTask = async (task: Task): Promise<Task | null> => {
 /**
  * 删除任务
  */
-export const deleteTask = async (taskId: string): Promise<boolean> => {
+export const deleteTask = async (taskId: string): Promise<{ success: boolean; error?: string }> => {
   try {
-    const { error } = await supabase
+    // 获取当前用户信息，用于权限验证
+    const teamMember = await getUserTeamMember();
+    if (!teamMember) {
+      return {
+        success: false,
+        error: 'No team member found for current user. Please ensure you are logged in.'
+      };
+    }
+
+    // 检查用户是否是管理员
+    if (teamMember.role !== 'MANAGER') {
+      return {
+        success: false,
+        error: 'Only managers can delete tasks. You do not have permission to delete this task.'
+      };
+    }
+
+    // 执行删除操作
+    const { error, data } = await supabase
       .from('tasks')
       .delete()
-      .eq('id', taskId);
+      .eq('id', taskId)
+      .select(); // 使用 select() 来获取删除的行数
 
     if (error) {
       console.error('Error deleting task:', error);
-      return false;
+      console.error('Error details:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
+      return {
+        success: false,
+        error: error.message || 'Failed to delete task. Please check your permissions.'
+      };
     }
 
-    return true;
-  } catch (error) {
+    // 检查是否真的删除了记录
+    if (!data || data.length === 0) {
+      return {
+        success: false,
+        error: 'Task not found or already deleted.'
+      };
+    }
+
+    console.log('Task deleted successfully:', taskId);
+    return { success: true };
+  } catch (error: any) {
     console.error('Exception deleting task:', error);
-    return false;
+    return {
+      success: false,
+      error: error?.message || 'An unexpected error occurred while deleting the task.'
+    };
   }
 };
 

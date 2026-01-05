@@ -120,9 +120,19 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Create trigger for task history
-CREATE TRIGGER task_history_trigger
-  AFTER INSERT OR UPDATE OR DELETE ON tasks
+-- Create triggers for task history
+-- Note: DELETE uses BEFORE trigger to record history before CASCADE deletion
+--       INSERT and UPDATE use AFTER trigger as normal
+
+-- Trigger for INSERT and UPDATE (AFTER)
+CREATE TRIGGER task_history_insert_update_trigger
+  AFTER INSERT OR UPDATE ON tasks
+  FOR EACH ROW
+  EXECUTE FUNCTION log_task_history();
+
+-- Trigger for DELETE (BEFORE - record history before CASCADE deletion)
+CREATE TRIGGER task_history_delete_trigger
+  BEFORE DELETE ON tasks
   FOR EACH ROW
   EXECUTE FUNCTION log_task_history();
 

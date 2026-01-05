@@ -371,18 +371,23 @@ const App: React.FC = () => {
 
     try {
       setError(null);
-      const success = await deleteTask(task.id);
+      const result = await deleteTask(task.id);
       
-      if (success) {
+      if (result.success) {
         // 从本地状态中移除任务
         setTasks(prev => prev.filter(t => t.id !== task.id));
         // 显示成功消息
         alert(t.deleteSuccess);
       } else {
-        setError(createErrorMessage(new Error('Failed to delete task'), lang, 'deleteTask'));
+        // 显示详细的错误信息
+        const errorMessage = result.error || t.deleteError;
+        setError(errorMessage);
+        console.error('Delete task error:', result.error);
       }
     } catch (err) {
-      setError(createErrorMessage(err, lang, 'deleteTask'));
+      const errorMessage = createErrorMessage(err, lang, 'deleteTask');
+      setError(errorMessage);
+      console.error('Delete task exception:', err);
     }
   };
 
