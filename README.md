@@ -225,7 +225,100 @@ npm run dev
 5. **后续更新**
    - 每次推送到 `main` 或 `master` 分支时，Vercel 会自动重新部署
 
-#### 方式二：通过 GitHub Actions CI/CD（自动化部署）
+#### 方式二：使用 Vercel CLI 命令行部署
+
+使用 Vercel CLI 可以在本地通过命令行直接部署项目，适合快速部署和测试。
+
+1. **安装 Vercel CLI**
+   ```bash
+   npm i -g vercel
+   ```
+
+2. **登录 Vercel**
+   ```bash
+   vercel login
+   ```
+   - 会打开浏览器进行登录，或使用邮箱登录
+
+3. **首次部署（创建项目）**
+   ```bash
+   # 在项目根目录运行
+   vercel
+   ```
+   
+   按照提示操作：
+   - **是否链接到现有项目？** 选择 `No`（首次部署创建新项目）
+   - **项目名称**：输入项目名称（如：`rs-filling-manager`）
+   - **目录**：使用默认值 `./`
+   - **是否覆盖设置？** 选择 `No`（使用默认配置）
+
+4. **配置环境变量**
+   
+   部署后，需要在 Vercel Dashboard 中配置环境变量：
+   - 访问 [Vercel Dashboard](https://vercel.com/dashboard)
+   - 进入项目 > **Settings > Environment Variables**
+   - 添加以下变量：
+     ```
+     VITE_SUPABASE_URL=https://your-project-id.supabase.co
+     VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+     API_KEY=your_gemini_api_key (可选)
+     ```
+   - 确保为所有环境（Production, Preview, Development）都添加了变量
+
+5. **部署到生产环境**
+   ```bash
+   # 部署到预览环境（默认）
+   vercel
+   
+   # 部署到生产环境
+   vercel --prod
+   ```
+
+6. **链接到现有项目**
+   
+   如果项目已在 Vercel 中存在，可以链接本地项目：
+   ```bash
+   vercel link
+   ```
+   - 选择对应的项目
+   - 会生成 `.vercel/project.json` 文件，包含项目配置信息
+
+7. **查看部署信息**
+   ```bash
+   # 列出所有项目
+   vercel ls
+   
+   # 查看项目详情
+   vercel inspect [项目名称]
+   
+   # 查看部署日志
+   vercel logs [部署URL]
+   ```
+
+8. **环境变量管理（CLI）**
+   ```bash
+   # 添加环境变量
+   vercel env add VITE_SUPABASE_URL production
+   
+   # 查看环境变量
+   vercel env ls
+   
+   # 删除环境变量
+   vercel env rm VITE_SUPABASE_URL production
+   ```
+
+**优势：**
+- ✅ 快速部署，无需打开浏览器
+- ✅ 适合 CI/CD 和自动化脚本
+- ✅ 可以管理环境变量
+- ✅ 支持本地开发和测试
+
+**注意事项：**
+- 首次部署建议使用 Dashboard 方式，便于配置环境变量
+- 使用 CLI 部署后，仍需在 Dashboard 中配置环境变量
+- 生产环境部署使用 `vercel --prod` 命令
+
+#### 方式三：通过 GitHub Actions CI/CD（自动化部署）
 
 项目已配置 GitHub Actions 工作流，可以实现自动化部署：
 
@@ -260,7 +353,9 @@ npm run dev
 
 **配置位置：**
 - **本地开发**: 在 `.env.local` 文件中配置（参考 `.env.example`）
-- **Vercel 部署**: 在 Vercel Dashboard > **Settings > Environment Variables** 中配置
+- **Vercel 部署**: 
+  - 在 Vercel Dashboard > **Settings > Environment Variables** 中配置（推荐）
+  - 或使用 CLI：`vercel env add [变量名] [环境]`
 - **GitHub Actions**: 在 GitHub Secrets 中配置
 
 ### 数据库
@@ -300,6 +395,13 @@ Supabase 提供托管数据库，无需额外配置。所有数据存储在 Supa
 
 ## 故障排除
 
+### 详细文档
+
+- `如何获取项目URL.md` - 如何获取 Vercel、Supabase 和本地开发 URL
+- `TROUBLESHOOTING.md` - 页面加载和运行时问题排查
+- `VERCEL_DEPLOYMENT_TROUBLESHOOTING.md` - Vercel 部署故障排除（DEPLOYMENT_NOT_FOUND 等错误）
+- `DEPLOYMENT_CHECKLIST.md` - 部署前检查清单
+
 ### 常见问题
 
 #### 本地开发问题
@@ -329,6 +431,7 @@ Supabase 提供托管数据库，无需额外配置。所有数据存储在 Supa
    - 检查 GitHub Secrets 是否已正确配置
    - 确认 `VERCEL_TOKEN`、`VERCEL_ORG_ID`、`VERCEL_PROJECT_ID` 是否正确
    - 查看 GitHub Actions 日志中的详细错误信息
+   - **DEPLOYMENT_NOT_FOUND 错误**：参考 `VERCEL_DEPLOYMENT_TROUBLESHOOTING.md` 获取详细解决方案
 
 ### 检查清单
 
