@@ -92,24 +92,33 @@ CREATE TRIGGER update_task_progress_updated_at
   EXECUTE FUNCTION update_updated_at_column();
 
 -- Create function to log task history
+-- Note: Uses get_user_team_member_id() to get the current user making the change
+-- since tasks table doesn't have an updated_by column
 CREATE OR REPLACE FUNCTION log_task_history()
 RETURNS TRIGGER AS $$
+DECLARE
+  current_user_team_member_id UUID;
 BEGIN
+  -- Get the current user's team member ID
+  current_user_team_member_id := get_user_team_member_id();
+  
   IF TG_OP = 'INSERT' THEN
     INSERT INTO task_history (task_id, changed_by, change_type, new_data)
     VALUES (NEW.id, NEW.created_by, 'CREATE', row_to_json(NEW));
     RETURN NEW;
   ELSIF TG_OP = 'UPDATE' THEN
     INSERT INTO task_history (task_id, changed_by, change_type, old_data, new_data)
-    VALUES (NEW.id, NEW.updated_by, 'UPDATE', row_to_json(OLD), row_to_json(NEW));
+    VALUES (NEW.id, current_user_team_member_id, 'UPDATE', row_to_json(OLD), row_to_json(NEW));
     RETURN NEW;
   ELSIF TG_OP = 'DELETE' THEN
     INSERT INTO task_history (task_id, changed_by, change_type, old_data)
-    VALUES (OLD.id, OLD.updated_by, 'DELETE', row_to_json(OLD));
+    VALUES (OLD.id, current_user_team_member_id, 'DELETE', row_to_json(OLD));
     RETURN OLD;
   END IF;
+  
+  RETURN NULL;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Create trigger for task history
 CREATE TRIGGER task_history_trigger

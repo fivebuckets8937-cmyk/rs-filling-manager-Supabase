@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Task, TeamMember, TaskStatus, DailyTask } from '../types';
 import { WORKFLOW_TEMPLATE, FULL_WORKFLOW_STEPS } from '../constants';
 import { suggestAssignment } from '../services/ollamaService';
-import { X, Sparkles, CheckCircle2, Circle, Info } from 'lucide-react';
+import { X, Sparkles, CheckCircle2, Circle, Info, Trash2 } from 'lucide-react';
 
 /**
  * 生成UUID格式的任务ID
@@ -23,6 +23,7 @@ interface TaskModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (task: Task) => void;
+  onDelete?: (task: Task) => void; // 可选的删除回调
   currentUser: TeamMember;
   members: TeamMember[];
   existingTask?: Task;
@@ -32,7 +33,7 @@ interface TaskModalProps {
 }
 
 const TaskModal: React.FC<TaskModalProps> = ({ 
-  isOpen, onClose, onSave, currentUser, members, existingTask, allTasks, translations, lang 
+  isOpen, onClose, onSave, onDelete, currentUser, members, existingTask, allTasks, translations, lang 
 }) => {
   const [formData, setFormData] = useState<Partial<Task>>({});
   const [aiSuggestion, setAiSuggestion] = useState<string>('');
@@ -120,6 +121,17 @@ const TaskModal: React.FC<TaskModalProps> = ({
 
   const isManager = currentUser.role === 'MANAGER';
   const isAssignee = currentUser.id === formData.assigneeId;
+
+  const handleDelete = () => {
+    if (!existingTask || !onDelete) return;
+    
+    const confirmMessage = `${translations.confirmDelete}\n\n${existingTask.projectNumber} / ${existingTask.batchInfo}\n\n${translations.confirmDeleteDetail}`;
+    
+    if (window.confirm(confirmMessage)) {
+      onDelete(existingTask);
+      onClose();
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
@@ -303,16 +315,31 @@ const TaskModal: React.FC<TaskModalProps> = ({
             </div>
           </div>
 
-          <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
-            <button onClick={onClose} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded font-medium">
-              {translations.cancel}
-            </button>
-            <button 
-              onClick={handleSave} 
-              className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium shadow-sm transition-transform active:scale-95"
-            >
-              {translations.saveTask}
-            </button>
+          <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-between items-center">
+            {/* 左侧：删除按钮（仅管理员，仅编辑模式） */}
+            <div>
+              {isManager && existingTask && onDelete && (
+                <button 
+                  onClick={handleDelete}
+                  className="px-4 py-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded font-medium transition-colors flex items-center gap-2"
+                >
+                  <Trash2 size={16} />
+                  {translations.delete}
+                </button>
+              )}
+            </div>
+            {/* 右侧：取消和保存按钮 */}
+            <div className="flex gap-3">
+              <button onClick={onClose} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded font-medium">
+                {translations.cancel}
+              </button>
+              <button 
+                onClick={handleSave} 
+                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium shadow-sm transition-transform active:scale-95"
+              >
+                {translations.saveTask}
+              </button>
+            </div>
           </div>
         </div>
 

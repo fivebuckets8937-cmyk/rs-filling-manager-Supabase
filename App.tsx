@@ -9,7 +9,7 @@ import Login from './components/Login';
 //import { generateMorningBriefing } from './services/geminiService';
 // 暂时隐藏 AI 简报功能
 // import { generateMorningBriefing } from './services/ollamaService.ts';
-import { fetchTasks, saveTask } from './services/storageService';
+import { fetchTasks, saveTask, deleteTask } from './services/storageService';
 import { getCurrentUser, logout as authLogout, isAuthenticated, convertToTeamMember, onAuthStateChange } from './services/authService';
 import { subscribeToTasks, unsubscribeFromTasks } from './services/realtimeService';
 import { createErrorMessage } from './services/errorHandler';
@@ -24,7 +24,8 @@ import {
   Clock, 
   AlertCircle,
   // Sparkles, // 暂时隐藏 AI 简报功能
-  Download
+  Download,
+  Trash2
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -358,6 +359,31 @@ const App: React.FC = () => {
   const handleEdit = (task: Task) => {
     setEditingTask(task);
     setIsModalOpen(true);
+  };
+
+  const handleDeleteTask = async (task: Task) => {
+    const t = TRANSLATIONS[lang];
+    const confirmMessage = `${t.confirmDelete}\n\n${task.projectNumber} / ${task.batchInfo}\n\n${t.confirmDeleteDetail}`;
+    
+    if (!window.confirm(confirmMessage)) {
+      return; // 用户取消删除
+    }
+
+    try {
+      setError(null);
+      const success = await deleteTask(task.id);
+      
+      if (success) {
+        // 从本地状态中移除任务
+        setTasks(prev => prev.filter(t => t.id !== task.id));
+        // 显示成功消息
+        alert(t.deleteSuccess);
+      } else {
+        setError(createErrorMessage(new Error('Failed to delete task'), lang, 'deleteTask'));
+      }
+    } catch (err) {
+      setError(createErrorMessage(err, lang, 'deleteTask'));
+    }
   };
 
   // 暂时隐藏 AI 简报功能
@@ -714,12 +740,23 @@ const App: React.FC = () => {
                         </div>
                       </td>
                       <td className="p-4 text-right">
-                        <button 
-                          onClick={() => handleEdit(task)}
-                          className="text-blue-600 hover:text-blue-800 font-medium text-sm"
-                        >
-                          {t.viewEdit}
-                        </button>
+                        <div className="flex items-center justify-end gap-3">
+                          <button 
+                            onClick={() => handleEdit(task)}
+                            className="text-blue-600 hover:text-blue-800 font-medium text-sm"
+                          >
+                            {t.viewEdit}
+                          </button>
+                          {currentUser?.role === 'MANAGER' && (
+                            <button 
+                              onClick={() => handleDeleteTask(task)}
+                              className="text-red-600 hover:text-red-800 font-medium text-sm flex items-center gap-1 transition-colors"
+                              title={t.deleteTask}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -735,6 +772,7 @@ const App: React.FC = () => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSave={handleSaveTask}
+        onDelete={handleDeleteTask}
         currentUser={currentUser}
         members={teamMembers}
         existingTask={editingTask}

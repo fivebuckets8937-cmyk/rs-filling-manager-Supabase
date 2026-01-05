@@ -77,18 +77,36 @@ API_KEY=your_gemini_api_key
    - 点击 **Create user**
 
 2. **创建团队成员记录：**
+   
+   **方式一：通过邮箱自动查找（推荐）**
+   
+   在 **SQL Editor** 中执行（将 `test@example.com` 替换为实际邮箱）：
+   ```sql
+   INSERT INTO team_members (user_id, name, role, avatar)
+   SELECT 
+     id, 
+     'Test User', 
+     'MANAGER',
+     'https://ui-avatars.com/api/?name=Test+User&background=0f172a&color=fff'
+   FROM auth.users 
+   WHERE email = 'test@example.com'
+   ON CONFLICT (user_id) DO NOTHING;
+   ```
+   
+   **方式二：手动指定UUID**
+   
    - 在用户列表中，复制刚创建用户的 **UUID** (ID 列)
-   - 进入 **SQL Editor**，执行以下 SQL（替换 `USER_UUID_HERE`）：
-
-```sql
-INSERT INTO team_members (user_id, name, role, avatar)
-VALUES (
-  'USER_UUID_HERE',  -- 替换为实际用户 UUID
-  'Test User', 
-  'MANAGER',
-  'https://ui-avatars.com/api/?name=Test+User&background=0f172a&color=fff'
-);
-```
+   - 执行以下 SQL（替换 `USER_UUID_HERE`）：
+   ```sql
+   INSERT INTO team_members (user_id, name, role, avatar)
+   VALUES (
+     'USER_UUID_HERE'::uuid,  -- 注意：添加 ::uuid 类型转换
+     'Test User', 
+     'MANAGER',
+     'https://ui-avatars.com/api/?name=Test+User&background=0f172a&color=fff'
+   )
+   ON CONFLICT (user_id) DO NOTHING;
+   ```
 
 **验证团队成员创建：**
 ```sql

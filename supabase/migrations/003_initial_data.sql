@@ -60,12 +60,14 @@
 -- Uncomment and replace UUIDs with actual user IDs:
 
 /*
+-- Alternative: If you want to insert with explicit user IDs (after getting them from auth.users)
+-- IMPORTANT: Add ::uuid type cast to avoid syntax errors
 INSERT INTO team_members (user_id, name, role, avatar) VALUES
-  ('00000000-0000-0000-0000-000000000001', 'Yaohua', 'MANAGER', 'https://ui-avatars.com/api/?name=Yaohua&background=0f172a&color=fff'),
-  ('00000000-0000-0000-0000-000000000002', 'Flora', 'MEMBER', 'https://ui-avatars.com/api/?name=Flora&background=3b82f6&color=fff'),
-  ('00000000-0000-0000-0000-000000000003', 'Shuman', 'MEMBER', 'https://ui-avatars.com/api/?name=Shuman&background=8b5cf6&color=fff'),
-  ('00000000-0000-0000-0000-000000000004', 'Yabin', 'MEMBER', 'https://ui-avatars.com/api/?name=Yabin&background=10b981&color=fff'),
-  ('00000000-0000-0000-0000-000000000005', 'Wenlong', 'MEMBER', 'https://ui-avatars.com/api/?name=Wenlong&background=f59e0b&color=fff')
+  ('00000000-0000-0000-0000-000000000001'::uuid, 'Yaohua', 'MANAGER', 'https://ui-avatars.com/api/?name=Yaohua&background=0f172a&color=fff'),
+  ('00000000-0000-0000-0000-000000000002'::uuid, 'Flora', 'MEMBER', 'https://ui-avatars.com/api/?name=Flora&background=3b82f6&color=fff'),
+  ('00000000-0000-0000-0000-000000000003'::uuid, 'Shuman', 'MEMBER', 'https://ui-avatars.com/api/?name=Shuman&background=8b5cf6&color=fff'),
+  ('00000000-0000-0000-0000-000000000004'::uuid, 'Yabin', 'MEMBER', 'https://ui-avatars.com/api/?name=Yabin&background=10b981&color=fff'),
+  ('00000000-0000-0000-0000-000000000005'::uuid, 'Wenlong', 'MEMBER', 'https://ui-avatars.com/api/?name=Wenlong&background=f59e0b&color=fff')
 ON CONFLICT (user_id) DO NOTHING;
 */
 
